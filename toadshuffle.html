@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Toadshuffle</title>
+<style>
+body{
+ color: #ffffff;
+ background-color: #f8f8f8;
+ padding:0;
+ margin:0;
+}
+div.column{
+ color: #000000;
+ background-color: #ffffff;
+ max-width:800px;
+ margin:0 auto;
+ padding:15px 15px 15px 30px;
+}
+canvas#toad {
+ border:1px solid #000000;
+}
+</style>
+<script>
+/*
+	TOAD Shuffler	v 1.1
+	Copyright (C) 2001-2002  Hal Canary
+
+	This program is free software; you can redistribute it and/or
+	modify it under the terms of version 2 of the GNU General Public
+	License as published by the Free Software Foundation.
+
+	This program is distributed in the hope that it will be useful,
+	but WITHOUT ANY WARRANTY; without even the implied warranty of
+	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+	GNU General Public License for more details.
+
+	You should have received a copy of the GNU General Public License
+	along with this program; if not, write to the Free Software
+	Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+*/
+/*   (r,c)	 (0,0)
+		rows	 N   columns
+				N N
+	  <--r	 N N N	  c-->
+			  N N N E
+			 S S S W E  (0,n-1)
+	 (n,0)  W N S E N
+			 S W N S
+			  S S S
+			   S S
+				S
+			  (n,n-1)
+*/
+
+function Matrix(n, m) {
+	this.array_ = new Uint8Array(n * m);
+	this.n_ = n;
+	this.m_ = m;
+	this.at = function(i, j) { return this.array_[i + j * this.n_]; }
+	this.set = function(i, j, v) { this.array_[i + j * this.n_] = v; }
+	this.fill = function(v) {
+		for (var i = 0; i < this.array_.length; i++) {
+			this.array_[i] = v;
+		}
+	}
+}
+
+const N = "N".charCodeAt(0);
+const S = "S".charCodeAt(0);
+const E = "E".charCodeAt(0);
+const W = "W".charCodeAt(0);
+const X = "X".charCodeAt(0);
+
+function Tiling() {
+	this.n_ = 1;
+	const K = 100;
+	this.dom_ = new Matrix(K + 1, K);
+	this.dom_.fill(X);
+	this.next_ = new Matrix(K + 1, K);
+	this.reset = function() {
+		this.dom_.fill(X);
+		this.n_ = 1;
+	}
+	this.fillAll = function() {
+		for (var r = 0; r < this.n_ + 1; r++) {
+			for (var c = 0; c < this.n_; c++) {
+				if (this.dom_.at(r,	 c) == X &&
+					this.dom_.at(r + 1, c) == X) {
+					if (Math.floor(Math.random() * 2) == 0) {
+						this.dom_.set(r,	 c, N);
+						this.dom_.set(r + 1, c, S);
+					} else {
+						this.dom_.set(r,	 c, E);
+						this.dom_.set(r + 1, c, W);
+					}
+				}
+			}
+		}
+	}
+	this.annihilateAll = function() {
+		for (var r = 0; r < this.n_ + 1; r++) {
+			for (var c = 0; c < this.n_ - 1; c++) {
+				var u = this.dom_.at(r, c);
+				var v = this.dom_.at(r, c + 1);
+				if ((u == E && v == W) || (u == S && v == N)) {
+					this.dom_.set(r, c,	 X);
+					this.dom_.set(r, c + 1, X);
+				}
+			}
+		}
+	}
+	this.moveAll = function() {
+		if (this.n_ + 1 > this.dom_.m_) {
+			var newk = this.dom_.m_ * 2;
+			var newdom = new Matrix(newk + 1, newk);
+			newdom.fill(X);
+			for (var r = 0; r < this.n_ + 1; r++) {
+				for (var c = 0; c < this.n_; c++) {
+					newdom.set(r, c, this.dom_.at(r, c));
+				}
+			}
+			this.dom_ = newdom;
+			this.next_ = new Matrix(newk + 1, newk);
+		}
+		this.next_.fill(X);
+		for (var r = 0; r < this.n_ + 1; r++) {
+			for (var c = 0; c < this.n_; c++) {
+				direction = this.dom_.at(r, c);
+				if (direction == S) {
+					this.next_.set(r + 1, c + 1, S);
+				} else if (direction == N) {
+					this.next_.set(r, c, N);
+				} else if (direction == W) {
+					this.next_.set(r + 1, c, W);
+				} else if (direction == E) {
+					this.next_.set(r, c + 1, E);
+				}
+			}
+		}
+		this.n_ = this.n_ + 1;
+		tmp = this.dom_;
+		this.dom_ = this.next_;
+		this.next_ = tmp;
+	}
+	this.drawAll = function(l, sizeX, sizeY, ctx) {
+		if (l < 1) { l = 1; }
+		var centerX = sizeX / 2;
+		var centerY = sizeY / 2;
+		var n = this.n_;
+		var fillStyle;
+		var rect;
+		for (var r = 0; r < this.n_ + 1; r++) {
+			for (var c = 0; c < this.n_; c++) {
+				var direction = this.dom_.at(r, c);
+				if (direction == E) {
+					fillStyle = "green";
+					rect = [centerX + l * (c - r) ,
+							centerY + l * (c + r - n) , l, 2 * l];
+				} else if (direction == W) {
+					fillStyle = "red";
+					rect = [centerX + l * (c - r),
+							centerY + l * (c + r - n - 1), l, 2 * l];
+				} else if (direction == S) {
+					fillStyle = "blue";
+					rect = [centerX + l * (c - r),
+							centerY + l * (c + r - n), 2 * l , l];
+				} else if (direction == N) {
+					fillStyle = "yellow";
+					rect = [centerX + l * (c - r - 1),
+							centerY + l * (c + r - n), 2 * l, l];
+				} else if (direction == X) {
+					continue;
+				}
+				ctx.fillStyle = fillStyle;
+				ctx.fillRect(rect[0], rect[1], rect[2], rect[3]);
+				if (l > 2) {
+					ctx.strokeStyle = "black";
+					ctx.lineWidth = 1;
+					ctx.strokeRect(rect[0], rect[1], rect[2], rect[3]);
+				}
+			}
+		}
+	}
+}
+
+var t;
+var count;
+var scale;
+
+function nexter() {
+	const sleepTime = 10;
+	const N = 10
+	w = window.innerWidth;
+	h = window.innerHeight;
+	var clean = false;
+	if (count == 0) {
+		t.annihilateAll();
+	} else if (count == 1) {
+		t.moveAll();
+		if (scale * t.n_ * 2 > (w < h ? w : h)) {
+			scale /= 2;
+			if (scale < 2) {
+				t.reset();
+				scale = 10;
+			}
+		}
+	} else if (count == 2) {
+		t.fillAll();
+	} else {
+		clean = true;
+	}
+	if (!clean) {
+		if (canvas1.width  != w) { canvas1.width  = w; }
+		if (canvas1.height != h) { canvas1.height = h; }
+		if (canvas2.width  != w) { canvas2.width  = w; }
+		if (canvas2.height != h) { canvas2.height = h; }
+		var ctx1 = canvas1.getContext("2d");
+		ctx1.fillStyle = "#FFFFFF";
+		ctx1.fillRect(0, 0, w, h);
+		t.drawAll(scale, w, h, ctx1);
+		swap();
+	}
+	count = (count + 1) % N;
+	setTimeout(nexter, sleepTime);
+}
+
+var canvas1;
+var canvas2;
+var swapped;
+
+function swap() {
+	if (swapped) {
+		canvas2 = document.getElementById("toad1");
+		canvas1 = document.getElementById("toad2");
+	} else {
+		canvas1 = document.getElementById("toad1");
+		canvas2 = document.getElementById("toad2");
+	}
+	swapped = !swapped;
+	canvas2.style.visibility = "visible";
+	canvas1.style.visibility = "hidden";
+}
+
+window.addEventListener("load", function(){
+	swapped = false;
+	swap();
+	t = new Tiling();
+	canvas1.width  = window.innerWidth;
+	canvas1.height = window.innerHeight;
+	canvas1.style.position = "absolute";
+	canvas1.style.top = 0;
+	canvas1.style.left = 0; 
+	canvas1.style.visibility = "hidden"
+
+	canvas2.width  = window.innerWidth;
+	canvas2.height = window.innerHeight;
+	canvas2.style.position = "absolute";
+	canvas2.style.top = 0;
+	canvas2.style.left = 0; 
+	canvas2.style.visibility = "visible";
+	count = 2;
+	scale = 16;
+	nexter();
+});
+</script>
+</head>
+<body>
+<canvas id="toad1"></canvas>
+<canvas id="toad2"></canvas>
+</div>
+</body>
+</html>
